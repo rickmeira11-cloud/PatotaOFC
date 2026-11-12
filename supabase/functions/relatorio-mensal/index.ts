@@ -318,9 +318,11 @@ serve(async (req) => {
       else { resumo.mensAtrasadas++; resumo.valorAtrasado += Number(m.valor) }
     }
 
-    // Destinatários: admins + backup fixo
-    const emailsAdmins = (admins ?? []).map(a => a.email).filter(Boolean) as string[]
-    const destinatarios = [...new Set([...emailsAdmins, "gasbnu@gmail.com"])]
+    // Destinatário fixo enquanto o domínio Resend não está verificado.
+    // Após verificar um domínio em resend.com/domains e atualizar o `from`,
+    // substitua esta linha por: [...new Set([...emailsAdmins, "gasbnu@gmail.com"])]
+    void admins
+    const destinatarios = ["gasbnu@gmail.com"]
 
     if (destinatarios.length === 0) {
       return json({ error: "Nenhum destinatário encontrado." }, 400)
