@@ -80,11 +80,13 @@ export default function Convidados() {
     setLoadingConv(true)
     const { data } = await supabase
       .from("presencas")
-      .select("id, nome_convidado, convidado_por_id, confirmado, aprovado, posicao, rating_habilidade, rating_convidado, jogadores:convidado_por_id(nome)")
+      .select("id, nome_convidado, convidado_por_id, confirmado, aprovado, posicao, posicao_convidado, rating_habilidade, rating_convidado, jogadores:convidado_por_id(nome)")
       .eq("jogo_id", jid)
       .eq("convidado", true)
       .order("criado_em")
-    setConvidados((data ?? []) as unknown as Convidado[])
+    // Mesma precedência do RPC sortear_times: posicao_convidado (página pública) antes de posicao
+    const linhas = (data ?? []) as unknown as (Convidado & { posicao_convidado: string | null })[]
+    setConvidados(linhas.map(c => ({ ...c, posicao: c.posicao_convidado ?? c.posicao })))
     setLoadingConv(false)
     setLoading(false)
   }
@@ -113,6 +115,7 @@ export default function Convidados() {
       confirmado: true,
       aprovado: true,
       posicao: fPosicao,
+      posicao_convidado: fPosicao,
       rating_habilidade: fRating,
       rating_convidado: fRating,
       patota_id: usuario.patota_id,
@@ -132,7 +135,7 @@ export default function Convidados() {
 
   async function salvarEdicao(id: string) {
     setSalvandoEdit(true)
-    await supabase.from("presencas").update({ posicao: ePosicao, rating_habilidade: eRating, rating_convidado: eRating }).eq("id", id)
+    await supabase.from("presencas").update({ posicao: ePosicao, posicao_convidado: ePosicao, rating_habilidade: eRating, rating_convidado: eRating }).eq("id", id)
     setSalvandoEdit(false)
     setEditId(null)
     if (jogoSel) carregarConvidados(jogoSel)
