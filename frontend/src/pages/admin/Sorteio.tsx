@@ -49,6 +49,7 @@ export default function Sorteio() {
   const [times, setTimes] = useState<Time[]>([])
   const [loading, setLoading] = useState(true)
   const [sorteando, setSorteando] = useState(false)
+  const [excluindo, setExcluindo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [sorteioSalvo, setSorteioSalvo] = useState(false)
   const [numConfirmados, setNumConfirmados] = useState(0)
@@ -227,7 +228,21 @@ export default function Sorteio() {
     setSorteando(false)
   }
 
-  const confirmados = times.flatMap(t => t.jogadores).length
+  async function excluirSorteio() {
+    if (!jogo) return
+    if (!window.confirm("Excluir o sorteio salvo deste jogo? As presenças não são alteradas.")) return
+    setExcluindo(true)
+    setErro(null)
+    const { error } = await supabase.from("sorteio_times").delete().eq("jogo_id", jogo.id)
+    setExcluindo(false)
+    if (error) {
+      setErro(`Não foi possível excluir o sorteio: ${error.message}`)
+      return
+    }
+    setTimes([])
+    setSorteioSalvo(false)
+  }
+
   const podeSortear = totalParaSortear >= MIN_CONFIRMADOS
 
   if (loading) return (
@@ -384,6 +399,16 @@ export default function Sorteio() {
               "🎲 Sortear times"
             )}
           </button>
+
+          {sorteioSalvo && (
+            <button
+              onClick={excluirSorteio}
+              disabled={excluindo || sorteando}
+              style={{ display: "block", width: "100%", marginTop: "0.5rem", padding: "0.55rem", borderRadius: 8, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}
+            >
+              {excluindo ? "Excluindo..." : "🗑️ Excluir sorteio"}
+            </button>
+          )}
 
           {times.length > 0 && (
             <div className={ss.timesGrid}>
