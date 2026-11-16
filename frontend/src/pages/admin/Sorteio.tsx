@@ -90,13 +90,14 @@ export default function Sorteio() {
       // conta confirmados e guarda quais jogadores confirmaram
       const { data: presConf } = await supabase
         .from("presencas")
-        .select("jogador_id")
+        .select("jogador_id, convidado, aprovado")
         .eq("jogo_id", proximoJogo.id)
         .eq("confirmado", true)
-      const ids = new Set((presConf ?? []).map((p: any) => p.jogador_id).filter(Boolean) as string[])
+      // Mesma regra do RPC sortear_times: jogadores confirmados + convidados aprovados
+      const lista = (presConf ?? []) as { jogador_id: string | null; convidado: boolean | null; aprovado: boolean | null }[]
+      const ids = new Set(lista.filter(p => !p.convidado && p.jogador_id).map(p => p.jogador_id as string))
       setConfirmadosIds(ids)
-      const count = ids.size + (presConf ?? []).filter((p: any) => !p.jogador_id).length
-      setNumConfirmados(count)
+      setNumConfirmados(ids.size + lista.filter(p => p.convidado && p.aprovado).length)
 
       const { data: salvo } = await supabase
         .from("sorteio_times")
@@ -142,15 +143,37 @@ export default function Sorteio() {
     setSorteando(true)
     setErro(null)
 
-    // Inserir presença confirmada para os extras selecionados
-    if (extrasIds.size > 0) {
-      const inserts = Array.from(extrasIds)
-        .filter(id => !confirmadosIds.has(id))
+    // Registra presença confirmada dos extras. Não usa upsert: o índice único
+    // (jogo_id, jogador_id) é parcial e o ON CONFLICT do PostgREST falha contra ele.
+    const extras = Array.from(extrasIds).filter(id => !confirmadosIds.has(id))
+    if (extras.length > 0) {
+      const { data: existentes, error: errSel } = await supabase
+        .from("presencas")
+        .select("id, jogador_id")
+        .eq("jogo_id", jogo.id)
+        .in("jogador_id", extras)
+      const jaExistem = new Set((existentes ?? []).map(p => p.jogador_id as string))
+      const idsAtualizar = (existentes ?? []).map(p => p.id as string)
+      const inserir = extras
+        .filter(id => !jaExistem.has(id))
         .map(jogador_id => ({ jogo_id: jogo.id, jogador_id, confirmado: true, convidado: false, aprovado: false }))
-      if (inserts.length > 0) {
-        await supabase.from("presencas").upsert(inserts, { onConflict: "jogo_id,jogador_id" })
+
+      const errUpd = idsAtualizar.length > 0
+        ? (await supabase.from("presencas").update({ confirmado: true, convidado: false }).in("id", idsAtualizar)).error
+        : null
+      const errIns = inserir.length > 0
+        ? (await supabase.from("presencas").insert(inserir)).error
+        : null
+
+      const falha = errSel ?? errUpd ?? errIns
+      if (falha) {
+        await carregar()
+        setErro(`Não foi possível registrar a presença dos jogadores marcados: ${falha.message}`)
+        setSorteando(false)
+        return
       }
     }
+    const esperado = totalParaSortear
 
     const rpcArgs: Record<string, unknown> = { p_jogo_id: jogo.id }
     const tam = tamTime ? parseInt(tamTime) : 0
@@ -195,8 +218,12 @@ export default function Sorteio() {
 
     await supabase.from("sorteio_times").insert(rows)
 
-    setTimes(agrupar(data as JogadorSorteio[]))
-    setSorteioSalvo(true)
+    // Os extras agora são presenças confirmadas: recarrega para não contá-los em dobro
+    setExtrasIds(new Set())
+    await carregar()
+    if (data.length !== esperado) {
+      setErro(`Atenção: ${data.length} jogadores foram sorteados, mas o total esperado era ${esperado}.`)
+    }
     setSorteando(false)
   }
 
