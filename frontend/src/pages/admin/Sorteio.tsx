@@ -229,6 +229,17 @@ export default function Sorteio() {
     setSorteando(false)
   }
 
+  async function removerConfirmado(jogadorId: string) {
+    if (!jogo) return
+    const { error } = await supabase
+      .from("presencas")
+      .update({ confirmado: false })
+      .eq("jogo_id", jogo.id)
+      .eq("jogador_id", jogadorId)
+    await carregar()
+    if (error) setErro(`Não foi possível remover a presença: ${error.message}`)
+  }
+
   async function excluirSorteio() {
     if (!jogo) return
     setConfirmarExcluir(false)
@@ -282,6 +293,32 @@ export default function Sorteio() {
 
       {jogo && (
         <>
+          {confirmadosIds.size > 0 && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "0.9rem 1rem", marginBottom: "1rem" }}>
+              <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--text)", marginBottom: "0.25rem" }}>
+                Jogadores confirmados ({confirmadosIds.size})
+              </div>
+              <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: "0.6rem" }}>
+                Clique no ✕ para tirar a presença de um jogador. Ele volta para a lista de inclusão manual.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                {todosJogadores.filter(j => confirmadosIds.has(j.id)).map(j => (
+                  <span key={j.id} style={{ display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.3rem 0.4rem 0.3rem 0.6rem", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface2)", fontSize: "0.82rem", color: "var(--text)" }}>
+                    {j.nome}
+                    <button
+                      onClick={() => removerConfirmado(j.id)}
+                      title={`Remover presença de ${j.nome}`}
+                      aria-label={`Remover presença de ${j.nome}`}
+                      style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontWeight: 700, padding: "0 0.2rem", fontSize: "0.85rem" }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Jogadores não confirmados que admin pode incluir manualmente */}
           {todosJogadores.filter(j => !confirmadosIds.has(j.id)).length > 0 && (() => {
             const naoConfirmados = todosJogadores.filter(j => !confirmadosIds.has(j.id))
