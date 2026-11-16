@@ -14,6 +14,7 @@ type Convidado = {
   nome_convidado: string
   convidado_por_id: string | null
   confirmado: boolean
+  aprovado: boolean
   posicao: string | null
   rating_habilidade: number | null
   convidado_por?: { nome: string } | null
@@ -73,7 +74,7 @@ export default function Convidados() {
     setLoadingConv(true)
     const { data } = await supabase
       .from("presencas")
-      .select("id, nome_convidado, convidado_por_id, confirmado, posicao, rating_habilidade, jogadores:convidado_por_id(nome)")
+      .select("id, nome_convidado, convidado_por_id, confirmado, aprovado, posicao, rating_habilidade, jogadores:convidado_por_id(nome)")
       .eq("jogo_id", jid)
       .eq("convidado", true)
       .order("criado_em")
@@ -82,8 +83,9 @@ export default function Convidados() {
     setLoading(false)
   }
 
-  async function aprovar(id: string, confirmar: boolean) {
-    await supabase.from("presencas").update({ confirmado: confirmar }).eq("id", id)
+  async function aprovar(id: string, aprovado: boolean) {
+    const { error } = await supabase.from("presencas").update({ aprovado, confirmado: true }).eq("id", id)
+    if (error) alert(`Erro ao atualizar convidado: ${error.message}`)
     if (jogoSel) carregarConvidados(jogoSel)
   }
 
@@ -103,6 +105,7 @@ export default function Convidados() {
       nome_convidado: fNome.trim(),
       convidado: true,
       confirmado: true,
+      aprovado: true,
       posicao: fPosicao,
       rating_habilidade: fRating,
       patota_id: usuario.patota_id,
@@ -128,8 +131,8 @@ export default function Convidados() {
     if (jogoSel) carregarConvidados(jogoSel)
   }
 
-  const pendentes = convidados.filter(c => !c.confirmado)
-  const aprovados = convidados.filter(c => c.confirmado)
+  const pendentes = convidados.filter(c => !c.aprovado)
+  const aprovados = convidados.filter(c => c.aprovado)
   const jogoAtual = jogos.find(j => j.id === jogoSel)
 
   if (loading) return (
