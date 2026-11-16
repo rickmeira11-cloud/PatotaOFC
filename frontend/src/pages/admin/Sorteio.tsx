@@ -50,6 +50,7 @@ export default function Sorteio() {
   const [loading, setLoading] = useState(true)
   const [sorteando, setSorteando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
+  const [confirmarExcluir, setConfirmarExcluir] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [sorteioSalvo, setSorteioSalvo] = useState(false)
   const [numConfirmados, setNumConfirmados] = useState(0)
@@ -230,7 +231,7 @@ export default function Sorteio() {
 
   async function excluirSorteio() {
     if (!jogo) return
-    if (!window.confirm("Excluir o sorteio salvo deste jogo? As presenças não são alteradas.")) return
+    setConfirmarExcluir(false)
     setExcluindo(true)
     setErro(null)
     const { error } = await supabase.from("sorteio_times").delete().eq("jogo_id", jogo.id)
@@ -400,14 +401,31 @@ export default function Sorteio() {
             )}
           </button>
 
-          {sorteioSalvo && (
+          {sorteioSalvo && !confirmarExcluir && (
             <button
-              onClick={excluirSorteio}
+              onClick={() => setConfirmarExcluir(true)}
               disabled={excluindo || sorteando}
               style={{ display: "block", width: "100%", marginTop: "0.5rem", padding: "0.55rem", borderRadius: 8, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" }}
             >
               {excluindo ? "Excluindo..." : "🗑️ Excluir sorteio"}
             </button>
+          )}
+          {sorteioSalvo && confirmarExcluir && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem", padding: "0.55rem 0.75rem", borderRadius: 8, border: "1px solid #fca5a5", fontSize: "0.85rem", color: "var(--text)" }}>
+              <span style={{ flex: 1, minWidth: 180 }}>Excluir o sorteio salvo? As presenças não são alteradas.</span>
+              <button
+                onClick={excluirSorteio}
+                style={{ padding: "0.35rem 0.8rem", borderRadius: 6, border: "none", background: "#dc2626", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+              >
+                Sim, excluir
+              </button>
+              <button
+                onClick={() => setConfirmarExcluir(false)}
+                style={{ padding: "0.35rem 0.8rem", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text)", cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+            </div>
           )}
 
           {times.length > 0 && (
