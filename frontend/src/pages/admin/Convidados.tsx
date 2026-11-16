@@ -17,6 +17,7 @@ type Convidado = {
   aprovado: boolean
   posicao: string | null
   rating_habilidade: number | null
+  rating_convidado: number | null
   convidado_por?: { nome: string } | null
 }
 
@@ -26,6 +27,11 @@ function fmtData(iso: string) {
 }
 
 const posicaoLabel: Record<string, string> = { goleiro: "Goleiro", linha: "Linha", qualquer: "Qualquer" }
+
+// Mesma precedência do RPC sortear_times
+function notaDe(c: { rating_convidado: number | null; rating_habilidade: number | null }) {
+  return c.rating_convidado ?? c.rating_habilidade
+}
 
 export default function Convidados() {
   const { usuario } = useOutletContext<Ctx>()
@@ -74,7 +80,7 @@ export default function Convidados() {
     setLoadingConv(true)
     const { data } = await supabase
       .from("presencas")
-      .select("id, nome_convidado, convidado_por_id, confirmado, aprovado, posicao, rating_habilidade, jogadores:convidado_por_id(nome)")
+      .select("id, nome_convidado, convidado_por_id, confirmado, aprovado, posicao, rating_habilidade, rating_convidado, jogadores:convidado_por_id(nome)")
       .eq("jogo_id", jid)
       .eq("convidado", true)
       .order("criado_em")
@@ -108,6 +114,7 @@ export default function Convidados() {
       aprovado: true,
       posicao: fPosicao,
       rating_habilidade: fRating,
+      rating_convidado: fRating,
       patota_id: usuario.patota_id,
     })
     setSalvando(false)
@@ -120,12 +127,12 @@ export default function Convidados() {
   function iniciarEditar(c: Convidado) {
     setEditId(c.id)
     setEPosicao(c.posicao ?? "qualquer")
-    setERating(c.rating_habilidade ?? 5)
+    setERating(Math.min(5, Math.max(1, notaDe(c) ?? 5)))
   }
 
   async function salvarEdicao(id: string) {
     setSalvandoEdit(true)
-    await supabase.from("presencas").update({ posicao: ePosicao, rating_habilidade: eRating }).eq("id", id)
+    await supabase.from("presencas").update({ posicao: ePosicao, rating_habilidade: eRating, rating_convidado: eRating }).eq("id", id)
     setSalvandoEdit(false)
     setEditId(null)
     if (jogoSel) carregarConvidados(jogoSel)
@@ -196,8 +203,10 @@ export default function Convidados() {
                     </select>
                   </div>
                   <div>
-                    <label className={f.label}>Rating (1-10)</label>
-                    <input className={f.input} type="number" min={1} max={10} value={fRating} onChange={e => setFRating(Number(e.target.value))} />
+                    <label className={f.label}>Nota (1–5)</label>
+                    <select className={f.input} value={fRating} onChange={e => setFRating(Number(e.target.value))}>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
                   </div>
                 </div>
                 {erroForm && <div className={f.erro}>{erroForm}</div>}
@@ -225,7 +234,7 @@ export default function Convidados() {
                           <div className={f.extratoData}>
                             {c.convidado_por?.nome ? `convidado por ${c.convidado_por.nome}` : "sem convidante"}
                             {c.posicao ? ` · ${posicaoLabel[c.posicao] ?? c.posicao}` : ""}
-                            {c.rating_habilidade ? ` · ★ ${c.rating_habilidade}` : ""}
+                            {notaDe(c) ? ` · ★ ${notaDe(c)}` : ""}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -289,15 +298,15 @@ export default function Convidados() {
                                 <option value="linha">Linha</option>
                                 <option value="qualquer">Qualquer</option>
                               </select>
-                              <input
+                              <select
                                 className={f.input}
                                 style={{ width: 60 }}
-                                type="number"
-                                min={1}
-                                max={10}
                                 value={eRating}
                                 onChange={e => setERating(Number(e.target.value))}
-                              />
+                                aria-label="Nota (1–5)"
+                              >
+                                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
                               <button
                                 onClick={() => salvarEdicao(c.id)}
                                 disabled={salvandoEdit}
@@ -316,7 +325,7 @@ export default function Convidados() {
                             <div className={f.extratoData}>
                               {c.convidado_por?.nome ? `por ${c.convidado_por.nome}` : "avulso"}
                               {c.posicao ? ` · ${posicaoLabel[c.posicao] ?? c.posicao}` : ""}
-                              {c.rating_habilidade ? ` · ★ ${c.rating_habilidade}` : ""}
+                              {notaDe(c) ? ` · ★ ${notaDe(c)}` : ""}
                             </div>
                           )}
                         </div>
