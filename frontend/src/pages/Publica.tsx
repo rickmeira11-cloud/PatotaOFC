@@ -35,7 +35,7 @@ type Presenca = {
   jogadores?: { nome: string } | null
 }
 
-type Jogador = { id: string; nome: string; email: string | null; plano_mensalidade: "com_churrasco" | "sem_churrasco" | null; usuario_id: string | null }
+type Jogador = { id: string; nome: string; email: string | null; plano_mensalidade: "com_churrasco" | "sem_churrasco" | null; usuario_id: string | null; ativo: boolean }
 
 type MinhaMensalidade = { id: string; mes_ref: string; pago: boolean; valor: number }
 type MinhaPresenca = { jogo_data: string; confirmado: boolean }
@@ -146,8 +146,8 @@ export default function Publica() {
   useEffect(() => {
     if (!session?.user?.id || !patota?.id || jogadores.length === 0) return
     const uid = session.user.id
-    const jl = jogadores.find(j => j.usuario_id === uid)
-      ?? (session.user.email ? jogadores.find(j => j.email?.toLowerCase() === session.user.email!.toLowerCase()) : null)
+    const jl = jogadores.find(j => j.usuario_id === uid && j.ativo)
+      ?? (session.user.email ? jogadores.find(j => j.email?.toLowerCase() === session.user.email!.toLowerCase() && j.ativo) : null)
       ?? null
     if (!jl?.usuario_id) return
     carregarAreaPessoal(jl.id, patota.id as unknown as number)
@@ -212,7 +212,10 @@ export default function Publica() {
 
     const [{ data: jogos }, { data: jogs }, { data: patConfig }] = await Promise.all([
       supabase.from("jogos").select("*").eq("patota_id", pid).gte("data", hoje).in("status", ["agendado", "confirmado"]).order("data").limit(1),
-      supabase.from("jogadores").select("id, nome, email, plano_mensalidade, usuario_id").eq("patota_id", pid).eq("ativo", true).order("nome"),
+      // Sem filtro de ativo aqui: precisamos reconhecer a sessão mesmo que o jogador
+      // vinculado tenha sido desativado (ex.: conta duplicada). jogadoresAtivos filtra
+      // depois, para o restante da tela (lista, pendentes, fluxo anônimo por e-mail).
+      supabase.from("jogadores").select("id, nome, email, plano_mensalidade, usuario_id, ativo").eq("patota_id", pid).order("nome"),
       supabase.from("patota").select("valor_adicional_churrasco").eq("id", pid as number).maybeSingle(),
     ])
 
@@ -254,32 +257,44 @@ export default function Publica() {
     setLoading(false)
   }
 
-  // Jogador logado (sessão ativa na patota) — prioriza vínculo explícito via usuario_id
+  const jogadoresAtivos = jogadores.filter(j => j.ativo)
+
+  // Jogador logado (sessão ativa na patota) — prioriza vínculo explícito via usuario_id.
+  // Busca em todos (inclusive inativos) para distinguir "não achou vínculo" de
+  // "o vínculo existe mas o jogador foi desativado" (jogadorLogadoInativo abaixo).
   const sessionUserId = session?.user?.id ?? null
   const sessionEmail = session?.user?.email ?? null
-  const jogadorLogado = sessionUserId
+  const jogadorVinculado = sessionUserId
     ? (jogadores.find(j => j.usuario_id === sessionUserId)
         ?? (sessionEmail ? jogadores.find(j => j.email?.toLowerCase() === sessionEmail.toLowerCase()) : null)
         ?? null)
     : null
+  const jogadorLogado = jogadorVinculado?.ativo ? jogadorVinculado : null
+  const jogadorLogadoInativo = jogadorVinculado && !jogadorVinculado.ativo ? jogadorVinculado : null
 
   async function confirmarPresenca(confirmar: boolean) {
     if (!jogo) return
     setLoadingConf(true)
 
-    const emailBusca = jogadorLogado?.email ?? email.trim()
+    // Usuário logado: usa o jogador já resolvido pela sessão, sem depender do
+    // campo jogadores.email (muitos jogadores não têm esse campo preenchido —
+    // o e-mail fica só no cadastro de usuário, vinculado por usuario_id).
+    // Buscar de novo por e-mail aqui quebrava a confirmação para quem está logado.
+    let jogador = jogadorLogado
 
-    if (!emailBusca) {
-      showToast("Informe seu e-mail para confirmar.")
-      setLoadingConf(false)
-      return
-    }
-
-    const jogador = jogadores.find(j => j.email?.toLowerCase() === emailBusca.toLowerCase())
     if (!jogador) {
-      showToast("E-mail não encontrado na patota 🤔")
-      setLoadingConf(false)
-      return
+      const emailBusca = email.trim()
+      if (!emailBusca) {
+        showToast("Informe seu e-mail para confirmar.")
+        setLoadingConf(false)
+        return
+      }
+      jogador = jogadoresAtivos.find(j => j.email?.toLowerCase() === emailBusca.toLowerCase()) ?? null
+      if (!jogador) {
+        showToast("E-mail não encontrado na patota 🤔")
+        setLoadingConf(false)
+        return
+      }
     }
 
     const { data: exist } = await supabase
@@ -403,7 +418,7 @@ export default function Publica() {
   // Convidados só aparecem na lista pública depois de aprovados pelo admin
   const confirmados = presencas.filter(p => p.confirmado && (!p.convidado || p.aprovado))
   const ausentes = presencas.filter(p => !p.confirmado && !p.convidado)
-  const pendentes = jogadores.filter(j => !presencas.some(p => p.jogador_id === j.id))
+  const pendentes = jogadoresAtivos.filter(j => !presencas.some(p => p.jogador_id === j.id))
 
   function nomePresenca(p: Presenca) {
     return p.jogadores?.nome ?? p.nome_convidado ?? "Convidado"
@@ -542,8 +557,20 @@ export default function Publica() {
                 </div>
               </div>
 
+              {/* Usuário logado cujo jogador vinculado foi desativado (ex.: conta
+                  duplicada). Mensagem clara em vez de cair no fluxo de e-mail,
+                  que nunca teria como funcionar para essa conta. */}
+              {jogadorLogadoInativo && (
+                <div className={styles.confirmBox}>
+                  <p className={styles.confirmBoxLabel}>
+                    Seu cadastro de jogador (<strong>{jogadorLogadoInativo.nome}</strong>) está inativo nesta patota.
+                    Fale com um administrador para reativar ou vincular sua conta corretamente.
+                  </p>
+                </div>
+              )}
+
               {/* Botão confirmar */}
-              {!confirmacaoEncerrada && (
+              {!confirmacaoEncerrada && !jogadorLogadoInativo && (
                 <>
                   {/* Logged-in user: direct confirm.
                       Prioridade sobre `confirmando`: a sessão (useAuth) resolve de forma
