@@ -59,6 +59,8 @@ export default function Sorteio() {
   const [extrasIds, setExtrasIds] = useState<Set<string>>(new Set())
   const [numTimes, setNumTimes] = useState<string>("")
   const [tamTime, setTamTime] = useState<string>("")
+  const [selTime, setSelTime] = useState<Record<string, string>>({})
+  const [adicionandoId, setAdicionandoId] = useState<string | null>(null)
 
   useEffect(() => { carregar() }, [])
 
@@ -238,6 +240,48 @@ export default function Sorteio() {
       .eq("jogador_id", jogadorId)
     await carregar()
     if (error) setErro(`Não foi possível remover a presença: ${error.message}`)
+  }
+
+  async function adicionarAoTime(jogadorId: string, nome: string, timeLabel: string) {
+    if (!jogo) return
+    setAdicionandoId(jogadorId)
+    setErro(null)
+
+    const { data: jogadorRow, error: errNota } = await supabase
+      .from("jogadores")
+      .select("nota")
+      .eq("id", jogadorId)
+      .single()
+
+    if (errNota) {
+      setErro(`Não foi possível adicionar ${nome}: ${errNota.message}`)
+      setAdicionandoId(null)
+      return
+    }
+
+    const rating = jogadorRow?.nota ?? 3
+
+    const { error } = await supabase.from("sorteio_times").insert({
+      jogo_id: jogo.id,
+      patota_id: usuario.patota_id,
+      time_label: timeLabel,
+      jogador_id: jogadorId,
+      convidado_id: null,
+      nome,
+      rating,
+    })
+
+    setAdicionandoId(null)
+    if (error) {
+      setErro(`Não foi possível adicionar ${nome}: ${error.message}`)
+      return
+    }
+    setSelTime(prev => {
+      const next = { ...prev }
+      delete next[jogadorId]
+      return next
+    })
+    await carregar()
   }
 
   async function excluirSorteio() {
@@ -464,6 +508,45 @@ export default function Sorteio() {
               </button>
             </div>
           )}
+
+          {sorteioSalvo && times.length > 0 && (() => {
+            const idsNoSorteio = new Set(
+              times.flatMap(t => t.jogadores.map(j => j.jogador_id)).filter((id): id is string => !!id)
+            )
+            const pendentes = todosJogadores.filter(j => confirmadosIds.has(j.id) && !idsNoSorteio.has(j.id))
+            if (pendentes.length === 0) return null
+            return (
+              <div style={{ background: "var(--surface)", border: "1px solid #f59e0b", borderRadius: 10, padding: "0.9rem 1rem", marginBottom: "1rem" }}>
+                <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--text)", marginBottom: "0.25rem" }}>
+                  Confirmaram depois do sorteio ({pendentes.length})
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "var(--muted)", marginBottom: "0.6rem" }}>
+                  Escolha o time e adicione cada um sem refazer o sorteio inteiro.
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  {pendentes.map(j => (
+                    <div key={j.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ flex: 1, fontSize: "0.85rem", color: "var(--text)" }}>{j.nome}</span>
+                      <select
+                        value={selTime[j.id] ?? times[0]?.label ?? ""}
+                        onChange={e => setSelTime(prev => ({ ...prev, [j.id]: e.target.value }))}
+                        style={{ padding: "0.3rem 0.4rem", borderRadius: 6, border: "1px solid var(--border)", background: "var(--surface2)", color: "var(--text)", fontSize: "0.82rem" }}
+                      >
+                        {times.map(t => <option key={t.label} value={t.label}>Time {t.label}</option>)}
+                      </select>
+                      <button
+                        onClick={() => adicionarAoTime(j.id, j.nome, selTime[j.id] ?? times[0]?.label ?? "")}
+                        disabled={adicionandoId === j.id}
+                        style={{ padding: "0.3rem 0.7rem", borderRadius: 6, border: "none", background: "var(--primary, #6366f1)", color: "#fff", fontWeight: 600, fontSize: "0.8rem", cursor: "pointer" }}
+                      >
+                        {adicionandoId === j.id ? "..." : "Adicionar"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           {times.length > 0 && (
             <div className={ss.timesGrid}>
