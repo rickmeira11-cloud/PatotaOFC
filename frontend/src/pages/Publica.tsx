@@ -545,8 +545,13 @@ export default function Publica() {
               {/* Botão confirmar */}
               {!confirmacaoEncerrada && (
                 <>
-                  {/* Logged-in user: direct confirm */}
-                  {jogadorLogado && !confirmando ? (
+                  {/* Logged-in user: direct confirm.
+                      Prioridade sobre `confirmando`: a sessão (useAuth) resolve de forma
+                      assíncrona e pode chegar depois do carregamento da página. Se o usuário
+                      clicar em "Confirmar presença" (fluxo anônimo) antes da sessão carregar,
+                      `confirmando` fica true; sem este `if` isolado, quando jogadorLogado
+                      resolvia para truthy a tela ficava presa no formulário de e-mail. */}
+                  {jogadorLogado ? (
                     <div className={styles.confirmBox} style={{ gap: "0.5rem" }}>
                       <p className={styles.confirmBoxLabel}>
                         Olá, <strong>{jogadorLogado.nome}</strong>!{" "}
