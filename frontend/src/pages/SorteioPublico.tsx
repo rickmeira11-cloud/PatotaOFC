@@ -18,10 +18,6 @@ function diaSemana(iso: string) {
   const [a, m, d] = iso.split("-").map(Number)
   return dias[new Date(a, m - 1, d).getDay()]
 }
-function mediaRating(jogs: JogadorSorteio[]) {
-  if (!jogs.length) return "—"
-  return (jogs.reduce((s, j) => s + j.rating, 0) / jogs.length).toFixed(1)
-}
 
 export default function SorteioPublico() {
   const { slug } = useParams<{ slug: string }>()
@@ -108,14 +104,12 @@ export default function SorteioPublico() {
               <div key={time.label} className={styles.timeCard}>
                 <div className={styles.timeHeader}>
                   <span className={styles.timeLabel}>{time.label}</span>
-                  <span className={styles.timeMedia}>⭐ {mediaRating(time.jogadores)}</span>
                 </div>
                 <ul className={styles.timeList}>
                   {time.jogadores.map((j, i) => (
                     <li key={i} className={styles.timeItem}>
                       <div className={styles.avatar}>{j.nome[0].toUpperCase()}</div>
                       <span>{j.nome}</span>
-                      <span className={styles.rating}>{j.rating}</span>
                     </li>
                   ))}
                 </ul>
