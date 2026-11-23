@@ -119,8 +119,6 @@ export default function Publica() {
   const [jogadores, setJogadores] = useState<Jogador[]>([])
   const [mensalidades, setMensalidades] = useState<Mensalidade[]>([])
   const [churrascos, setChrurrascos] = useState<Churrasco[]>([])
-  const [confirmando, setConfirmando] = useState(false)
-  const [email, setEmail] = useState("")
   const [loadingConf, setLoadingConf] = useState(false)
   const [convidadoNome, setConvidadoNome] = useState("")
   const [convidadoPosicao, setConvidadoPosicao] = useState<"goleiro" | "linha" | "qualquer">("qualquer")
@@ -273,29 +271,10 @@ export default function Publica() {
   const jogadorLogadoInativo = jogadorVinculado && !jogadorVinculado.ativo ? jogadorVinculado : null
 
   async function confirmarPresenca(confirmar: boolean) {
-    if (!jogo) return
+    // Exige login: confirmação por e-mail digitado (sem conta) foi descontinuada.
+    if (!jogo || !jogadorLogado) return
     setLoadingConf(true)
-
-    // Usuário logado: usa o jogador já resolvido pela sessão, sem depender do
-    // campo jogadores.email (muitos jogadores não têm esse campo preenchido —
-    // o e-mail fica só no cadastro de usuário, vinculado por usuario_id).
-    // Buscar de novo por e-mail aqui quebrava a confirmação para quem está logado.
-    let jogador = jogadorLogado
-
-    if (!jogador) {
-      const emailBusca = email.trim()
-      if (!emailBusca) {
-        showToast("Informe seu e-mail para confirmar.")
-        setLoadingConf(false)
-        return
-      }
-      jogador = jogadoresAtivos.find(j => j.email?.toLowerCase() === emailBusca.toLowerCase()) ?? null
-      if (!jogador) {
-        showToast("E-mail não encontrado na patota 🤔")
-        setLoadingConf(false)
-        return
-      }
-    }
+    const jogador = jogadorLogado
 
     const { data: exist } = await supabase
       .from("presencas")
@@ -351,12 +330,10 @@ export default function Publica() {
     }
 
     showToast(confirmar ? rand(FRASES_OK) : rand(FRASES_NAO))
-    setEmail("")
     setConvidadoNome("")
     setConvidadoPosicao("qualquer")
     setConvidadoRating(3)
     setAdicionandoConvidado(false)
-    setConfirmando(false)
     // Sincroniza com o servidor em background sem mostrar spinner
     if (slug) carregar(slug, true)
     setLoadingConf(false)
@@ -572,12 +549,6 @@ export default function Publica() {
               {/* Botão confirmar */}
               {!confirmacaoEncerrada && !jogadorLogadoInativo && (
                 <>
-                  {/* Logged-in user: direct confirm.
-                      Prioridade sobre `confirmando`: a sessão (useAuth) resolve de forma
-                      assíncrona e pode chegar depois do carregamento da página. Se o usuário
-                      clicar em "Confirmar presença" (fluxo anônimo) antes da sessão carregar,
-                      `confirmando` fica true; sem este `if` isolado, quando jogadorLogado
-                      resolvia para truthy a tela ficava presa no formulário de e-mail. */}
                   {jogadorLogado ? (
                     <div className={styles.confirmBox} style={{ gap: "0.5rem" }}>
                       <p className={styles.confirmBoxLabel}>
@@ -637,72 +608,18 @@ export default function Publica() {
                         {adicionandoConvidado ? "Remover convidado" : "+ Levar convidado?"}
                       </button>
                     </div>
-                  ) : !confirmando ? (
-                    <button className={styles.confirmBtn} onClick={() => setConfirmando(true)}>
-                      <div className={styles.confirmIconBox}>✅</div>
+                  ) : (
+                    // Sem login não dá para confirmar presença — decisão do admin:
+                    // cadastro é obrigatório antes de confirmar. O antigo fluxo por
+                    // e-mail digitado (sem conta) foi removido.
+                    <a href="/login" className={styles.confirmBtn} style={{ textDecoration: "none" }}>
+                      <div className={styles.confirmIconBox}>🔒</div>
                       <div className={styles.confirmTextos}>
-                        <strong>Confirmar presença</strong>
-                        <span>Toque para responder</span>
+                        <strong>Faça login para confirmar presença</strong>
+                        <span>Ainda não tem conta? Cadastre-se</span>
                       </div>
                       <span className={styles.chevron}>›</span>
-                    </button>
-                  ) : (
-                    <div className={styles.confirmBox}>
-                      <p className={styles.confirmBoxLabel}>Qual é o seu e-mail cadastrado?</p>
-                      <input
-                        className={styles.emailInput}
-                        type="email"
-                        placeholder="voce@email.com"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && confirmarPresenca(true)}
-                        autoFocus
-                      />
-                      {adicionandoConvidado && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                          <input
-                            className={styles.emailInput}
-                            style={{ marginTop: "0.5rem" }}
-                            type="text"
-                            placeholder="Nome do convidado"
-                            value={convidadoNome}
-                            onChange={e => setConvidadoNome(e.target.value)}
-                          />
-                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                            <select value={convidadoPosicao} onChange={e => setConvidadoPosicao(e.target.value as any)} style={{ flex: 1, minWidth: 100, padding: "0.35rem 0.5rem", borderRadius: 7, border: "1px solid var(--border)", background: "var(--surface2)", fontSize: "0.82rem", color: "var(--text)" }}>
-                              <option value="qualquer">Qualquer posição</option>
-                              <option value="goleiro">Goleiro</option>
-                              <option value="linha">Linha</option>
-                            </select>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.2rem" }}>
-                              {[1,2,3,4,5].map(n => (
-                                <button key={n} type="button" onClick={() => setConvidadoRating(n)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1rem", padding: "0 1px", color: n <= convidadoRating ? "#f59e0b" : "var(--border)" }}>★</button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <button
-                        style={{ background: "none", border: "none", fontSize: "0.78rem", color: "var(--muted)", cursor: "pointer", textDecoration: "underline", padding: "0.25rem 0", alignSelf: "flex-start" }}
-                        onClick={() => setAdicionandoConvidado(v => !v)}
-                      >
-                        {adicionandoConvidado ? "Remover convidado" : "+ Levar convidado?"}
-                      </button>
-                      <div className={styles.confirmBtns}>
-                        <button className={styles.btnVou} onClick={() => confirmarPresenca(true)} disabled={loadingConf}>
-                          ✅ Vou!
-                        </button>
-                        <button className={styles.btnNaoVou} onClick={() => confirmarPresenca(false)} disabled={loadingConf}>
-                          ❌ Não vou
-                        </button>
-                        <button className={styles.btnVoltar} onClick={() => { setConfirmando(false); setEmail(""); setConvidadoNome(""); setAdicionandoConvidado(false) }}>
-                          ←
-                        </button>
-                      </div>
-                      <p style={{ fontSize: "0.75rem", color: "var(--muted)", textAlign: "center", marginTop: "0.5rem" }}>
-                        <a href="/login" style={{ color: "var(--accent)", textDecoration: "none" }}>Fazer login</a> para confirmar sem digitar o e-mail
-                      </p>
-                    </div>
+                    </a>
                   )}
                 </>
               )}
