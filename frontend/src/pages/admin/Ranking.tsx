@@ -6,11 +6,13 @@ import s from "./admin.module.css"
 type Linha = {
   jogador_id: string
   nome: string
+  posicao: string | null
   jogos: number
   gols: number
   assistencias: number
   gols_sofridos: number
   canetas: number
+  jaFoiAoGol: boolean
 }
 
 type Sort = { col: keyof Linha; dir: 1 | -1 }
@@ -26,8 +28,8 @@ type Premio = {
 function calcPremios(linhas: Linha[]): Premio[] {
   if (linhas.length === 0) return []
 
-  function lider(campo: keyof Linha, menorEhMelhor = false) {
-    const comMedia = linhas.map(l => ({
+  function lider(campo: keyof Linha, menorEhMelhor = false, deLinhas: Linha[] = linhas) {
+    const comMedia = deLinhas.map(l => ({
       nome: l.nome,
       total: l[campo] as number,
       jogos: l.jogos,
@@ -39,6 +41,11 @@ function calcPremios(linhas: Linha[]): Premio[] {
     return comMedia.filter(x => Math.abs(x.media - melhor) < 0.0001)
   }
 
+  // Menos vazado só considera quem de fato já foi ao gol: goleiros, ou
+  // jogadores de linha que já tomaram gol em algum jogo (gols_sofridos > 0
+  // em algum lançamento é o sinal que temos de que estiveram no gol).
+  const elegiveisGol = linhas.filter(l => l.posicao === "goleiro" || l.jaFoiAoGol)
+
   return [
     {
       emoji: "🥇",
@@ -49,7 +56,7 @@ function calcPremios(linhas: Linha[]): Premio[] {
     {
       emoji: "🧤",
       titulo: "Menos vazado",
-      lideres: lider("gols_sofridos", true),
+      lideres: lider("gols_sofridos", true, elegiveisGol),
       unidade: "sofridos/jogo",
       melhorEhMenor: true,
     },
@@ -79,7 +86,7 @@ export default function Ranking() {
     setErro(null)
     const { data, error } = await supabase
       .from("jogo_estatisticas")
-      .select("jogador_id, gols, assistencias, gols_sofridos, canetas, jogadores(nome), jogos!inner(patota_id)")
+      .select("jogador_id, gols, assistencias, gols_sofridos, canetas, jogadores(nome, posicao), jogos!inner(patota_id)")
       .eq("jogos.patota_id", patotatId)
       .not("jogador_id", "is", null)
     if (error) { setErro(`Erro ao carregar ranking: ${error.message}`); setLoading(false); return }
@@ -87,8 +94,9 @@ export default function Ranking() {
     const mapa = new Map<string, Linha>()
     for (const e of data ?? []) {
       if (!e.jogador_id) continue
-      const nome = (e.jogadores as unknown as { nome: string } | null)?.nome ?? "?"
-      const prev = mapa.get(e.jogador_id) ?? { jogador_id: e.jogador_id, nome, jogos: 0, gols: 0, assistencias: 0, gols_sofridos: 0, canetas: 0 }
+      const jogadorInfo = e.jogadores as unknown as { nome: string; posicao: string | null } | null
+      const nome = jogadorInfo?.nome ?? "?"
+      const prev = mapa.get(e.jogador_id) ?? { jogador_id: e.jogador_id, nome, posicao: jogadorInfo?.posicao ?? null, jogos: 0, gols: 0, assistencias: 0, gols_sofridos: 0, canetas: 0, jaFoiAoGol: false }
       mapa.set(e.jogador_id, {
         ...prev,
         jogos: prev.jogos + 1,
@@ -96,6 +104,7 @@ export default function Ranking() {
         assistencias: prev.assistencias + (e.assistencias ?? 0),
         gols_sofridos: prev.gols_sofridos + (e.gols_sofridos ?? 0),
         canetas: prev.canetas + (e.canetas ?? 0),
+        jaFoiAoGol: prev.jaFoiAoGol || (e.gols_sofridos ?? 0) > 0,
       })
     }
     setLinhas(Array.from(mapa.values()))
